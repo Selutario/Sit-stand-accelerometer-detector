@@ -51,7 +51,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         et_agility = (EditText) findViewById(R.id.et_set_agility);
         setButton = (Button) findViewById(R.id.agility_button);
 
+        // Sensor declaration. We use 1Hz frequency to get smoother measurements.
+        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
+        sensorAcc = sensorManager.getSensorList(Sensor.TYPE_ACCELEROMETER).get(0);
+        sensorManager.registerListener(this, sensorAcc, 1000000);
+
         setAgility(2);
+
         t1=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
             @Override
             public void onInit(int status) {
@@ -82,10 +88,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }
         });
 
-        // Sensor declaration. We use 1Hz frequency to get smoother measurements.
-        sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
-        sensorAcc = sensorManager.getSensorList(Sensor.TYPE_ACCELEROMETER).get(0);
-        sensorManager.registerListener(this, sensorAcc, 1000000);
     }
 
 
@@ -99,6 +101,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     protected void onResume() {
         super.onResume();
         sensorManager.registerListener(this, sensorAcc, 1000000);
+    }
+
+    protected void readText(String text){
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            t1.speak(text, TextToSpeech.QUEUE_FLUSH,null,null);
+        } else {
+            t1.speak(text, TextToSpeech.QUEUE_FLUSH, null);
+        }
     }
 
 
@@ -162,8 +172,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         last_direction = "DOWN";
                         movStarted = false;
                         lastChangeTime = curTime;
-                        //tv_accelerometer.setText("\nCURRENT Z DOWN: " + zChange + tv_accelerometer.getText());
-                        /*leanDown = false;*/
                     }
                 }
             }
@@ -174,9 +182,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 direction = "UP_STARTED";
                 movStarted = true;
                 lastChangeTime = curTime;
-                //tv_accelerometer.setText("\nCURRENT Z UP: " + zChange + tv_accelerometer.getText());
-                //leanUp = false;
-
             } else if (yChange > yThreshold && last_direction != "DOWN" && diffChanges > timeThreshold){
                 direction = "DOWN_STARTED";
                 movStarted = true;
@@ -184,33 +189,20 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }
         }
 
-        /*if (zChange > 0.5 || zChange < -0.5)
-            tv_accelerometer.setText("\nZ: " + zChange + tv_accelerometer.getText());*/
 
         if (last_printed_direction != direction){
             //tv_accelerometer.setText("\nD: " + direction + " - Z: " + zChange + tv_accelerometer.getText());
             if (direction == "DOWN_FINISHED"){
                 tv_accelerometer.setText("\nDOWN" + tv_accelerometer.getText());
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    t1.speak("DOWN",TextToSpeech.QUEUE_FLUSH,null,null);
-                } else {
-                    t1.speak("DOWN", TextToSpeech.QUEUE_FLUSH, null);
-                }
+                readText("DOWN");
             }
 
             else if (direction == "UP_FINISHED"){
                 tv_accelerometer.setText("\nUP" + tv_accelerometer.getText());
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                    t1.speak("UP",TextToSpeech.QUEUE_FLUSH,null,null);
-                } else {
-                    t1.speak("UP", TextToSpeech.QUEUE_FLUSH, null);
-                }
+                readText("UP");
             }
 
             int count = tv_accelerometer.getLineCount();
-
             if (count > 150)
                 tv_accelerometer.setText(tv_accelerometer.getText().subSequence(0, 500));
             last_printed_direction = direction;
