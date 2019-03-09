@@ -5,6 +5,8 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.os.Build;
+import android.speech.tts.TextToSpeech;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
 import android.view.View;
@@ -13,10 +15,13 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.util.Locale;
+
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
     private TextView tv_accelerometer;
     private EditText et_agility;
     private Button setButton;
+    TextToSpeech t1;
 
     private SensorManager sensorManager;
     private Sensor sensorAcc;
@@ -47,7 +52,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         setButton = (Button) findViewById(R.id.agility_button);
 
         setAgility(2);
-
+        t1=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+            @Override
+            public void onInit(int status) {
+                if(status != TextToSpeech.ERROR) {
+                    t1.setLanguage(Locale.UK);
+                }
+            }
+        });
 
         setButton.setOnClickListener(new View.OnClickListener() {
             @Override
@@ -175,12 +187,27 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         /*if (zChange > 0.5 || zChange < -0.5)
             tv_accelerometer.setText("\nZ: " + zChange + tv_accelerometer.getText());*/
 
-       if (last_printed_direction != direction){
+        if (last_printed_direction != direction){
             //tv_accelerometer.setText("\nD: " + direction + " - Z: " + zChange + tv_accelerometer.getText());
-           if (direction == "DOWN_FINISHED")
-            tv_accelerometer.setText("\nDOWN" + tv_accelerometer.getText());
-           else if (direction == "UP_FINISHED")
-               tv_accelerometer.setText("\nUP" + tv_accelerometer.getText());
+            if (direction == "DOWN_FINISHED"){
+                tv_accelerometer.setText("\nDOWN" + tv_accelerometer.getText());
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    t1.speak("DOWN",TextToSpeech.QUEUE_FLUSH,null,null);
+                } else {
+                    t1.speak("DOWN", TextToSpeech.QUEUE_FLUSH, null);
+                }
+            }
+
+            else if (direction == "UP_FINISHED"){
+                tv_accelerometer.setText("\nUP" + tv_accelerometer.getText());
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                    t1.speak("UP",TextToSpeech.QUEUE_FLUSH,null,null);
+                } else {
+                    t1.speak("UP", TextToSpeech.QUEUE_FLUSH, null);
+                }
+            }
 
             int count = tv_accelerometer.getLineCount();
 
