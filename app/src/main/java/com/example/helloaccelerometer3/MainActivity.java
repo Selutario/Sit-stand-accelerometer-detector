@@ -239,20 +239,29 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         readText(getString(R.string.endCalibrating));
                         calibrating = false;
                         lastChangeTime = 0;
+                        float overall = 0;
+                        for(int i = 0; i < axisChanges.length; i++){
+                            if (i%2 == 0) {
+                                overall += Math.abs(axisChanges[i]);
+                            } else {
+                                overall += axisChanges[i];
+                            }
+                        }
+                        if (overall > 25.0f){ corrCoeff = 3.5 + overall/10; }
                     }
                 }
             }
         }
 
         if (last_printed_direction != direction){
-            tv_accelerometer.setText("\nD: " + direction + " - Y: " + yChange + " - Z: " + zChange + tv_accelerometer.getText());
+            //tv_accelerometer.setText("\nD: " + direction + " - Y: " + yChange + " - Z: " + zChange + tv_accelerometer.getText());
             if (direction == "DOWN_FINISHED"){
-                tv_accelerometer.setText("\nDOWN" + tv_accelerometer.getText());
+                tv_accelerometer.setText("\nCurrent pos: DOWN" + tv_accelerometer.getText());
                 readText(getString(R.string.posDown));
             }
 
             else if (direction == "UP_FINISHED"){
-                tv_accelerometer.setText("\nUP" + tv_accelerometer.getText());
+                tv_accelerometer.setText("\nCurrent pos: UP" + tv_accelerometer.getText());
                 readText(getString(R.string.posUp));
             }
 
