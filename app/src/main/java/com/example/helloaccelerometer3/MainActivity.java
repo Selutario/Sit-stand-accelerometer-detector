@@ -11,6 +11,7 @@ import android.os.PowerManager;
 import android.speech.tts.TextToSpeech;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
+import android.view.WindowManager;
 import android.widget.TextView;
 
 import java.util.ArrayList;
@@ -57,13 +58,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        /* This code together with the one in onDestroy()
-         * will make the screen be always on until this Activity gets destroyed. */
-        final PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-        this.mWakeLock = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "sitStands");
-        this.mWakeLock.acquire();
-
         tv_accelerometer = (TextView) findViewById(R.id.tv_accel_data);
+
+        // Keeps screen on
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         // Sensor declaration. We use 1Hz frequency to get smoother measurements.
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
@@ -95,7 +93,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onDestroy() {
-        this.mWakeLock.release();
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         super.onDestroy();
     }
 
@@ -103,12 +101,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     protected void onPause() {
         super.onPause();
         sensorManager.unregisterListener(this);
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     // Resume sensor listener
     protected void onResume() {
         super.onResume();
         sensorManager.registerListener(this, sensorAcc, 1000000);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     @SuppressWarnings("deprecation")
