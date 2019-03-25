@@ -34,6 +34,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private int lastInstruction = -1;
 
     private boolean movStarted = false;
+    private boolean leanDown = false;
     private boolean calibrating = true;
     private boolean ttsReady = false;
 
@@ -125,23 +126,22 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     public void onSensorChanged(SensorEvent event) {
         // We will use time measurements to reduce the noise in the use of the accelerometer.
         long curTime = System.currentTimeMillis();
+        long diffChanges = (curTime - lastChangeTime);
 
         // If first execution, history starts with current event value to avoid
         // getting a negative number as result of gravity force on yChange variable.
         if (yHistory == 0) {
             yHistory = event.values[1];
             zHistory = event.values[2];
-            lastChangeTime = curTime;
+            //lastChangeTime = curTime;
         }
 
-        long diffChanges = (curTime - lastChangeTime);
 
         // We obtain the difference of acceleration with respect to the previous measurement.
         float yChange = yHistory - event.values[1];
         float zChange = zHistory - event.values[2];
         yHistory = event.values[1];
         zHistory = event.values[2];
-
 
         if (!calibrating){
             // If the movement has already begun, it only accepts the
@@ -156,10 +156,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                             lastChangeTime = curTime;
                         }
                     } else if (direction == "DOWN_STARTED") {
-                        if (yChange < axisChanges[6]/corrCoeff && zChange < axisChanges[4]/corrCoeff) {
+                        if(!leanDown && yChange < axisChanges[6]/corrCoeff )
+                            leanDown = true;
+                        if (leanDown && zChange < axisChanges[4]/corrCoeff) {
                             direction = "DOWN_FINISHED";
                             last_direction = "DOWN";
                             movStarted = false;
+                            leanDown = false;
                             lastChangeTime = curTime;
                         }
                     }
@@ -242,7 +245,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         }
 
         if (last_printed_direction != direction){
-            //tv_accelerometer.setText("\nD: " + direction + " - Z: " + zChange + tv_accelerometer.getText());
+            tv_accelerometer.setText("\nD: " + direction + " - Y: " + yChange + " - Z: " + zChange + tv_accelerometer.getText());
             if (direction == "DOWN_FINISHED"){
                 tv_accelerometer.setText("\nDOWN" + tv_accelerometer.getText());
                 readText(getString(R.string.posDown));
