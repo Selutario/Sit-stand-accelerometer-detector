@@ -5,34 +5,44 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
+import android.media.MediaPlayer;
 import android.os.Build;
+import android.os.PowerManager;
 import android.speech.tts.TextToSpeech;
 import android.support.v7.app.AppCompatActivity;
 import android.os.Bundle;
-import android.view.View;
-import android.widget.Button;
-import android.widget.EditText;
 import android.widget.TextView;
-import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
     private TextView tv_accelerometer;
-    private EditText et_agility;
-    private Button setButton;
     TextToSpeech t1;
+    private MediaPlayer beep;
+    private boolean beepReady = false;
 
     private SensorManager sensorManager;
     private Sensor sensorAcc;
+    protected PowerManager.WakeLock mWakeLock;
 
-    private int timeThreshold;
-    private double yThreshold;
-    private double zThreshold;
+    private List<String> instructions;
+    private float axisChanges[] = new float[8];
+    private int instructionIndex = 0;
+    private int lastInstruction = -1;
 
     private boolean movStarted = false;
-    private boolean leanUp = false;
-    private boolean leanDown = false;
+    private boolean calibrating = true;
+    private boolean ttsReady = false;
+
+    private int timeThreshold = 500;
+    private double corrCoeff = 3.5;
+
+    private float maxYchange = 0;
+    private float maxZchange = 0;
+    private float minYchange = 0;
+    private float minZchange = 0;
 
     private float yHistory = 0;
     private float zHistory = 0;
@@ -47,49 +57,47 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        /* This code together with the one in onDestroy()
+         * will make the screen be always on until this Activity gets destroyed. */
+        final PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        this.mWakeLock = pm.newWakeLock(PowerManager.SCREEN_DIM_WAKE_LOCK, "sitStands");
+        this.mWakeLock.acquire();
+
         tv_accelerometer = (TextView) findViewById(R.id.tv_accel_data);
-        et_agility = (EditText) findViewById(R.id.et_set_agility);
-        setButton = (Button) findViewById(R.id.agility_button);
 
         // Sensor declaration. We use 1Hz frequency to get smoother measurements.
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         sensorAcc = sensorManager.getSensorList(Sensor.TYPE_ACCELEROMETER).get(0);
         sensorManager.registerListener(this, sensorAcc, 1000000);
 
-        setAgility(2);
+        instructions = new ArrayList<String>();
+        instructions.add(getString(R.string.step0));
+        instructions.add(getString(R.string.step1));
+        instructions.add(getString(R.string.step2));
+        instructions.add(getString(R.string.step3));
 
+        for(int i=0; i<axisChanges.length; i++)
+            axisChanges[i] = 0;
+
+        beep = MediaPlayer.create(this, R.raw.beep);
         t1=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
             @Override
             public void onInit(int status) {
                 if(status != TextToSpeech.ERROR) {
+                    //Locale locSpanish = new Locale("spa", "ES");
+                    //t1.setLanguage(locSpanish);
                     t1.setLanguage(Locale.UK);
+                    ttsReady = true;
                 }
             }
         });
-
-        setButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                if(et_agility.getText().toString().equals(null) || et_agility.getText().toString().equals(""))
-                {
-                    Toast.makeText(getBaseContext(),"Please enter something in text box",Toast.LENGTH_LONG).show();
-                } else {
-                    int et_value = Integer.parseInt(et_agility.getText().toString());
-
-                    if (et_value == 1 || et_value == 2 || et_value == 3){
-                        setAgility(et_value);
-                        et_agility.setText("");
-                        Toast msg = Toast.makeText(getBaseContext(), "Agility updated", Toast.LENGTH_SHORT);
-                        msg.show();
-                    } else {
-                        Toast.makeText(getBaseContext(), "Error. Use only 1, 2 or 3.", Toast.LENGTH_SHORT).show();
-                    }
-                }
-            }
-        });
-
     }
 
+    @Override
+    public void onDestroy() {
+        this.mWakeLock.release();
+        super.onDestroy();
+    }
 
     // Pause sensor listener to save battery and memory.
     protected void onPause() {
@@ -103,6 +111,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         sensorManager.registerListener(this, sensorAcc, 1000000);
     }
 
+    @SuppressWarnings("deprecation")
     protected void readText(String text){
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             t1.speak(text, TextToSpeech.QUEUE_FLUSH,null,null);
@@ -112,41 +121,20 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     }
 
 
-    protected void setAgility(int index){
-        switch (index){
-            case 1:
-                timeThreshold = 1300;
-                yThreshold = 0.10;
-                zThreshold = 0.20;
-                break;
-            case 2:
-                timeThreshold = 500;
-                yThreshold = 0.6;
-                zThreshold = 0.3;
-                break;
-            case 3:
-                timeThreshold = 200;
-                yThreshold = 0.8;
-                zThreshold = 0.7;
-                break;
-        }
-
-        et_agility.setHint(String.valueOf(index));
-        tv_accelerometer.setText("");
-    }
-
     @Override
     public void onSensorChanged(SensorEvent event) {
         // We will use time measurements to reduce the noise in the use of the accelerometer.
         long curTime = System.currentTimeMillis();
-        long diffChanges = (curTime - lastChangeTime);
 
         // If first execution, history starts with current event value to avoid
         // getting a negative number as result of gravity force on yChange variable.
         if (yHistory == 0) {
             yHistory = event.values[1];
             zHistory = event.values[2];
+            lastChangeTime = curTime;
         }
+
+        long diffChanges = (curTime - lastChangeTime);
 
         // We obtain the difference of acceleration with respect to the previous measurement.
         float yChange = yHistory - event.values[1];
@@ -155,51 +143,114 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         zHistory = event.values[2];
 
 
-        // If the movement has already begun, it only accepts the
-        // deceleration value that confirms the end of it.
-        if (movStarted) {
-            if (diffChanges > (timeThreshold/1.5)){
-                if (direction == "UP_STARTED"){
-                    if (yChange > yThreshold/1.5){
-                        direction = "UP_FINISHED";
-                        last_direction = "UP";
-                        movStarted = false;
-                        lastChangeTime = curTime;
+        if (!calibrating){
+            // If the movement has already begun, it only accepts the
+            // deceleration value that confirms the end of it.
+            if (movStarted) {
+                if (diffChanges > (timeThreshold/1.5)){
+                    if (direction == "UP_STARTED"){
+                        if (yChange > axisChanges[3]/corrCoeff){
+                            direction = "UP_FINISHED";
+                            last_direction = "UP";
+                            movStarted = false;
+                            lastChangeTime = curTime;
+                        }
+                    } else if (direction == "DOWN_STARTED") {
+                        if (yChange < axisChanges[6]/corrCoeff && zChange < axisChanges[4]/corrCoeff) {
+                            direction = "DOWN_FINISHED";
+                            last_direction = "DOWN";
+                            movStarted = false;
+                            lastChangeTime = curTime;
+                        }
                     }
-                } else if (direction == "DOWN_STARTED") {
-                    if (zChange > zThreshold/5 && yChange < -yThreshold) {
-                        direction = "DOWN_FINISHED";
-                        last_direction = "DOWN";
-                        movStarted = false;
-                        lastChangeTime = curTime;
+                }
+                // If it hasn't begun, it only accepts values that indicate the
+                // beginning of the movement.
+            } else {
+                if (yChange < axisChanges[2]/corrCoeff && zChange > axisChanges[1]/corrCoeff && last_direction != "UP" && diffChanges > timeThreshold){
+                    direction = "UP_STARTED";
+                    movStarted = true;
+                    lastChangeTime = curTime;
+                } else if (yChange > axisChanges[7]/corrCoeff && last_direction != "DOWN" && diffChanges > timeThreshold){
+                    direction = "DOWN_STARTED";
+                    movStarted = true;
+                    lastChangeTime = curTime;
+                }
+            }
+            // Calibrate if TextToSpeech engine is ready
+        } else if(ttsReady) {
+            // Read each instruction only once
+            if(instructionIndex != lastInstruction){
+                lastInstruction = instructionIndex;
+                readText(instructions.get(instructionIndex));
+                beepReady = true;
+            }
+
+            // Wait until reading is finished
+            if (t1.isSpeaking()) {
+                lastChangeTime = curTime;
+            } else {
+                if (beepReady){
+                    beep.start();
+                    beepReady = false;
+                }
+                // Read the max and min values of Z, Y axis
+                if (zChange < minZchange){
+                    minZchange = zChange;
+                    lastChangeTime = curTime;
+                }
+                if (zChange > maxZchange){
+                    maxZchange = zChange;
+                    lastChangeTime = curTime;
+                }
+                if (yChange < minYchange){
+                    minYchange = yChange;
+                    lastChangeTime = curTime;
+                }
+                if (yChange > maxYchange){
+                    maxYchange = yChange;
+                    lastChangeTime = curTime;
+                }
+
+                // When there is no major change in the last second
+                if(diffChanges > 1000){
+                    if(instructionIndex < instructions.size()-1) {
+                        // Save the values depending on whether the user is standing up or sitting.
+                        // and calculate the average value of the two measurements.
+                        // (if sitting instruction, isSitting is 1 so the measurements have to be
+                        // saved on the last 4 positions of the array)
+                        int isSitting = instructionIndex%2;
+                        axisChanges[0 + 4*isSitting] = (axisChanges[0 + 4*isSitting]+minZchange)/(instructionIndex/2 + 1);
+                        axisChanges[1 + 4*isSitting] = (axisChanges[1 + 4*isSitting]+maxZchange)/(instructionIndex/2 + 1);
+                        axisChanges[2 + 4*isSitting] = (axisChanges[2 + 4*isSitting]+minYchange)/(instructionIndex/2 + 1);
+                        axisChanges[3 + 4*isSitting] = (axisChanges[3 + 4*isSitting]+maxYchange)/(instructionIndex/2 + 1);
+
+                        // Restore the default value
+                        minYchange = 0;
+                        maxYchange = 0;
+                        minZchange = 0;
+                        maxZchange = 0;
+
+                        instructionIndex++;
+                    } else {
+                        readText(getString(R.string.endCalibrating));
+                        calibrating = false;
+                        lastChangeTime = 0;
                     }
                 }
             }
-            // If it hasn't begun, it only accepts values that indicate the
-            // beginning of the movement.
-        } else {
-            if (zChange > zThreshold && yChange < -yThreshold && last_direction != "UP" && diffChanges > timeThreshold){
-                direction = "UP_STARTED";
-                movStarted = true;
-                lastChangeTime = curTime;
-            } else if (yChange > yThreshold && last_direction != "DOWN" && diffChanges > timeThreshold){
-                direction = "DOWN_STARTED";
-                movStarted = true;
-                lastChangeTime = curTime;
-            }
         }
-
 
         if (last_printed_direction != direction){
             //tv_accelerometer.setText("\nD: " + direction + " - Z: " + zChange + tv_accelerometer.getText());
             if (direction == "DOWN_FINISHED"){
                 tv_accelerometer.setText("\nDOWN" + tv_accelerometer.getText());
-                readText("DOWN");
+                readText(getString(R.string.posDown));
             }
 
             else if (direction == "UP_FINISHED"){
                 tv_accelerometer.setText("\nUP" + tv_accelerometer.getText());
-                readText("UP");
+                readText(getString(R.string.posUp));
             }
 
             int count = tv_accelerometer.getLineCount();
@@ -207,7 +258,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 tv_accelerometer.setText(tv_accelerometer.getText().subSequence(0, 500));
             last_printed_direction = direction;
         }
-
     }
 
     @Override

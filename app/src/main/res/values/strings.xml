@@ -1,3 +1,21 @@
 <resources>
     <string name="app_name">HelloAccelerometer3</string>
+
+    <string name="step0">We need to calibrate the accelerometer.Follow
+        the instructions always after the beep. Please, stand up.
+    </string>
+    <string name="step1">Please, sit down.
+    </string>
+    <string name="step2">Please, stand up again.
+    </string>
+    <string name="step3">And please, sit down.
+    </string>
+    <string name="endCalibrating">End of calibrating. Now, you can stand up and sit down.
+    </string>
+
+    <string name="posDown">Down
+    </string>
+    <string name="posUp">Up
+    </string>
+
 </resources>
