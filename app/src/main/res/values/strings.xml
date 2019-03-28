@@ -12,6 +12,9 @@
     </string>
     <string name="endCalibrating">End of calibrating. Now, you can stand up and sit down.
     </string>
+    <string name="errorCalibrating">The movement was not carried out with the necessary speed.
+        Repeating calibrated.
+    </string>
 
     <string name="posDown">Down
     </string>

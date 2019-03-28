@@ -35,6 +35,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private boolean movStarted = false;
     private boolean leanDown = false;
+    private boolean leanUp = false;
     private boolean calibrating = true;
     private boolean ttsReady = false;
 
@@ -115,9 +116,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @SuppressWarnings("deprecation")
     protected void readText(String text){
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            t1.speak(text, TextToSpeech.QUEUE_FLUSH,null,null);
+            t1.speak(text, TextToSpeech.QUEUE_ADD,null,null);
         } else {
-            t1.speak(text, TextToSpeech.QUEUE_FLUSH, null);
+            t1.speak(text, TextToSpeech.QUEUE_ADD, null);
         }
     }
 
@@ -170,10 +171,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 // If it hasn't begun, it only accepts values that indicate the
                 // beginning of the movement.
             } else {
-                if (yChange < axisChanges[2]/corrCoeff && zChange > axisChanges[1]/corrCoeff && last_direction != "UP" && diffChanges > timeThreshold){
+                if(!leanUp && zChange > axisChanges[1]/corrCoeff)
+                    leanUp = true;
+                if (yChange < axisChanges[2]/corrCoeff && leanUp && last_direction != "UP" && diffChanges > timeThreshold){
                     direction = "UP_STARTED";
                     movStarted = true;
                     lastChangeTime = curTime;
+                    leanUp = false;
                 } else if (yChange > axisChanges[7]/corrCoeff && last_direction != "DOWN" && diffChanges > timeThreshold){
                     direction = "DOWN_STARTED";
                     movStarted = true;
@@ -186,12 +190,12 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             if(instructionIndex != lastInstruction){
                 lastInstruction = instructionIndex;
                 readText(instructions.get(instructionIndex));
-                beepReady = true;
             }
 
             // Wait until reading is finished
             if (t1.isSpeaking()) {
                 lastChangeTime = curTime;
+                beepReady = true;
             } else {
                 if (beepReady){
                     beep.start();
@@ -236,10 +240,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                         instructionIndex++;
                     } else {
-                        readText(getString(R.string.endCalibrating));
-                        calibrating = false;
-                        lastChangeTime = 0;
                         float overall = 0;
+
                         for(int i = 0; i < axisChanges.length; i++){
                             if (i%2 == 0) {
                                 overall += Math.abs(axisChanges[i]);
@@ -247,7 +249,21 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                                 overall += axisChanges[i];
                             }
                         }
-                        if (overall > 25.0f){ corrCoeff = 3.5 + overall/10; }
+                        if (overall > 25.0f){
+                            corrCoeff = corrCoeff + overall/10;
+                        }
+
+                        if(overall > 5.0f){
+                            readText(getString(R.string.endCalibrating));
+                            calibrating = false;
+                        } else {
+                            readText(getString(R.string.errorCalibrating));
+                            calibrating = true;
+                        }
+
+                        instructionIndex = 0;
+                        lastInstruction = -1;
+                        lastChangeTime = 0;
                     }
                 }
             }
