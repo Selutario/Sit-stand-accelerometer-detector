@@ -20,13 +20,12 @@ import java.util.Locale;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
     private TextView tv_accelerometer;
-    TextToSpeech t1;
+    TextToSpeech tts;
     private MediaPlayer beep;
     private boolean beepReady = false;
 
     private SensorManager sensorManager;
     private Sensor sensorAcc;
-    protected PowerManager.WakeLock mWakeLock;
 
     private List<String> instructions;
     private float axisChanges[] = new float[8];
@@ -49,6 +48,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     private float yHistory = 0;
     private float zHistory = 0;
+    private long iniTime = 0;
     private long lastChangeTime = 0;
     private String direction = "DOWN_FINISHED"; // The initial position is expected to be seated.
     private String last_direction = "DOWN";
@@ -80,13 +80,13 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             axisChanges[i] = 0;
 
         beep = MediaPlayer.create(this, R.raw.beep);
-        t1=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
+        tts=new TextToSpeech(getApplicationContext(), new TextToSpeech.OnInitListener() {
             @Override
             public void onInit(int status) {
                 if(status != TextToSpeech.ERROR) {
                     //Locale locSpanish = new Locale("spa", "ES");
                     //t1.setLanguage(locSpanish);
-                    t1.setLanguage(Locale.UK);
+                    tts.setLanguage(Locale.UK);
                     ttsReady = true;
                 }
             }
@@ -95,13 +95,19 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
     @Override
     public void onDestroy() {
-        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         super.onDestroy();
+        tts.stop();
+        tts.shutdown();
+        beep.stop();
+        beep.release();
+
+        getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
 
     // Pause sensor listener to save battery and memory.
     protected void onPause() {
         super.onPause();
+        tts.stop();
         sensorManager.unregisterListener(this);
         getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
     }
@@ -116,9 +122,9 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @SuppressWarnings("deprecation")
     protected void readText(String text){
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            t1.speak(text, TextToSpeech.QUEUE_ADD,null,null);
+            tts.speak(text, TextToSpeech.QUEUE_ADD,null,null);
         } else {
-            t1.speak(text, TextToSpeech.QUEUE_ADD, null);
+            tts.speak(text, TextToSpeech.QUEUE_ADD, null);
         }
     }
 
@@ -134,7 +140,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         if (yHistory == 0) {
             yHistory = event.values[1];
             zHistory = event.values[2];
-            //lastChangeTime = curTime;
         }
 
 
@@ -173,6 +178,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             } else {
                 if(!leanUp && zChange > axisChanges[1]/corrCoeff)
                     leanUp = true;
+                // From sitting to standing
                 if (yChange < axisChanges[2]/corrCoeff && leanUp && last_direction != "UP" && diffChanges > timeThreshold){
                     direction = "UP_STARTED";
                     movStarted = true;
@@ -193,13 +199,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
             }
 
             // Wait until reading is finished
-            if (t1.isSpeaking()) {
+            if (tts.isSpeaking()) {
                 lastChangeTime = curTime;
                 beepReady = true;
             } else {
                 if (beepReady){
                     beep.start();
                     beepReady = false;
+                    iniTime = curTime;
                 }
                 // Read the max and min values of Z, Y axis
                 if (zChange < minZchange){
@@ -221,23 +228,23 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                 // When there is no major change in the last second
                 if(diffChanges > 1000){
+                    // Save the values depending on whether the user is standing up or sitting.
+                    // and calculate the average value of the two measurements.
+                    // (if sitting instruction, isSitting is 1 so the measurements have to be
+                    // saved on the last 4 positions of the array)
+                    int isSitting = instructionIndex%2;
+                    axisChanges[0 + 4*isSitting] = (axisChanges[0 + 4*isSitting]+minZchange)/(instructionIndex/2 + 1);
+                    axisChanges[1 + 4*isSitting] = (axisChanges[1 + 4*isSitting]+maxZchange)/(instructionIndex/2 + 1);
+                    axisChanges[2 + 4*isSitting] = (axisChanges[2 + 4*isSitting]+minYchange)/(instructionIndex/2 + 1);
+                    axisChanges[3 + 4*isSitting] = (axisChanges[3 + 4*isSitting]+maxYchange)/(instructionIndex/2 + 1);
+
+                    // Restore the default value
+                    minYchange = 0;
+                    maxYchange = 0;
+                    minZchange = 0;
+                    maxZchange = 0;
+
                     if(instructionIndex < instructions.size()-1) {
-                        // Save the values depending on whether the user is standing up or sitting.
-                        // and calculate the average value of the two measurements.
-                        // (if sitting instruction, isSitting is 1 so the measurements have to be
-                        // saved on the last 4 positions of the array)
-                        int isSitting = instructionIndex%2;
-                        axisChanges[0 + 4*isSitting] = (axisChanges[0 + 4*isSitting]+minZchange)/(instructionIndex/2 + 1);
-                        axisChanges[1 + 4*isSitting] = (axisChanges[1 + 4*isSitting]+maxZchange)/(instructionIndex/2 + 1);
-                        axisChanges[2 + 4*isSitting] = (axisChanges[2 + 4*isSitting]+minYchange)/(instructionIndex/2 + 1);
-                        axisChanges[3 + 4*isSitting] = (axisChanges[3 + 4*isSitting]+maxYchange)/(instructionIndex/2 + 1);
-
-                        // Restore the default value
-                        minYchange = 0;
-                        maxYchange = 0;
-                        minZchange = 0;
-                        maxZchange = 0;
-
                         instructionIndex++;
                     } else {
                         float overall = 0;
@@ -253,7 +260,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                             corrCoeff = corrCoeff + overall/10;
                         }
 
-                        if(overall > 5.0f){
+                        if(overall > 9.0f){
                             readText(getString(R.string.endCalibrating));
                             calibrating = false;
                         } else {
@@ -263,7 +270,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
                         instructionIndex = 0;
                         lastInstruction = -1;
-                        lastChangeTime = 0;
+                        lastChangeTime = curTime;
                     }
                 }
             }
